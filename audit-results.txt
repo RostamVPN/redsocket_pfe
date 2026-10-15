@@ -12,6 +12,7 @@
 | Assessment window | 2026-10-13 – 2026-10-15 |
 | Engagement type | White-box (full source). Static review; the binary was not executed |
 | Lead assessor / QA reviewer | [Lead Assessor] / [QA Reviewer] |
+| Audit powered by | Claude Mythos 5.1 |
 | Public disclosure | Yes. Addresses appearing in the tree are RFC 5737 documentation ranges and need no redaction |
 
 Version history
