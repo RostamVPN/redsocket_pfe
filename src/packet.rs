@@ -171,6 +171,7 @@ pub fn checksum(data: &[u8]) -> u16 {
 }
 
 /// Where the L4 checksum lives, given the IP header start and protocol.
+/// None for a non-first fragment, whose bytes after the header are payload.
 #[inline]
 fn l4_offset(ip: &[u8]) -> Option<usize> {
     if ip.len() < IPV4_HDR_LEN {
@@ -178,6 +179,9 @@ fn l4_offset(ip: &[u8]) -> Option<usize> {
     }
     let ihl = (ip[0] & 0x0f) as usize * 4;
     if ihl < IPV4_HDR_LEN || ip.len() < ihl + 2 {
+        return None;
+    }
+    if u16::from_be_bytes([ip[6], ip[7]]) & 0x1fff != 0 {
         return None;
     }
     Some(match ip[9] {
@@ -393,6 +397,34 @@ mod tests {
         assert_eq!(&ip[20..26], &[0x0f, 0xa0, 0, 53, 0, 8], "ports and length untouched");
         assert_eq!(checksum(&ip[..20]), 0);
         assert_eq!(checksum(&pseudo(&ip)), 0, "UDP checksum must validate after rewrite");
+    }
+
+    #[test]
+    fn rewrite_leaves_fragment_payload_alone() {
+        let fragment = |proto: u8, frag_field: u16| {
+            let mut ip = vec![0x11u8; 60];
+            ip[..20].fill(0);
+            ip[0] = 0x45;
+            ip[2..4].copy_from_slice(&60u16.to_be_bytes());
+            ip[6..8].copy_from_slice(&frag_field.to_be_bytes());
+            ip[9] = proto;
+            ip[12..16].copy_from_slice(&[198, 51, 100, 77]);
+            ip[16..20].copy_from_slice(&[10, 0, 0, 1]);
+            let hc = checksum(&ip[..20]);
+            ip[10..12].copy_from_slice(&hc.to_be_bytes());
+            ip
+        };
+        for proto in [IPPROTO_TCP, IPPROTO_UDP] {
+            let mut ip = fragment(proto, 185);
+            let payload = ip[20..].to_vec();
+            rewrite_ipv4_dst(&mut ip, [203, 0, 113, 10]);
+            assert_eq!(&ip[16..20], &[203, 0, 113, 10]);
+            assert_eq!(checksum(&ip[..20]), 0);
+            assert_eq!(&ip[20..], &payload[..], "proto {proto}: non-first fragment payload");
+        }
+        let mut first = fragment(IPPROTO_TCP, 0x2000);
+        rewrite_ipv4_dst(&mut first, [203, 0, 113, 10]);
+        assert_ne!(&first[36..38], &[0x11, 0x11], "first fragment carries the TCP checksum");
     }
 
     #[test]
