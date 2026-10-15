@@ -35,6 +35,8 @@ ONLY a secondary/data NIC, never the management interface.
 
     ethtool -L <iface> combined 1          # pin all RX to one queue
     pfe -i <iface> -m /etc/pfe/map.csv --tunnel gre   # or deploy/pfe.service
+                                                      # with /etc/pfe/pfe.env
+                                                      # (deploy/pfe.env.example)
 
   -i, --iface <name>       interface to take over (required)
   -m, --mapfile <path>     route map CSV (required)
@@ -120,7 +122,7 @@ Repo layout
     src/xsk.rs       AF_XDP via raw syscalls: umem, rings, XSKMAP, XDP program
     src/ipmap.rs     map file parsing + atomic swap store + tests
     src/neighbor.rs  ifindex/MAC/gateway discovery, ARP cache
-    deploy/          pfe.service, backend-dsr.sh, map.csv.example
+    deploy/          pfe.service, pfe.env.example, backend-dsr.sh, map.csv.example
 
 ## Related repositories
 
