@@ -44,7 +44,10 @@ ONLY a secondary/data NIC, never the management interface.
       --gateway-mac <mac>  force next-hop MAC (skip ARP discovery)
       --gateway4 <ip>      force the IPv4 gateway IP
   -n, --configtest         validate config and exit (touches nothing)
-  -d, --debug              verbose; -dd hex dumps; -ddd full hex dumps
+  -d, --debug              per-packet lines, client addresses masked to /24;
+                           -dd hex dumps and full client addresses; -ddd full
+                           frames. All of it goes to the journal: use the
+                           higher levels for short diagnostics only
 
 Signals: SIGHUP reloads the map atomically; SIGUSR1 dumps stats (also every 60s).
 

@@ -44,7 +44,9 @@ Usage: pfe [OPTIONS]
       --gateway-mac <mac>  force the next-hop MAC (skip ARP discovery)
       --gateway4 <ip>      force the IPv4 gateway IP
   -n, --configtest         validate configuration and exit
-  -d, --debug              verbose output; -dd hex dumps; -ddd full hex dumps
+  -d, --debug              per-packet lines, client addresses masked to /24;
+                           -dd hex dumps and full client addresses; -ddd
+                           full frames (all of it lands in the journal)
   -h, --help               this help
 
 Signals: SIGHUP reloads the map file atomically; SIGUSR1 dumps stats.
@@ -531,7 +533,7 @@ unsafe fn handle_frame(
                 if debug >= 1 {
                     println!(
                         "fwd: {} -> {} ({} bytes) tunnel {} -> {}:{}",
-                        ipv4_str(&src_ip),
+                        client_label(&src_ip, debug),
                         ipv4_str(&eip.octets()),
                         inner_len,
                         tsrc,
@@ -677,9 +679,20 @@ fn mac_str(m: &[u8]) -> String {
         .join(":")
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 fn ipv4_str(b: &[u8]) -> String {
     format!("{}.{}.{}.{}", b[0], b[1], b[2], b[3])
+}
+
+/// Client address for the per-packet line: its /24 at -d, the full address
+/// from -dd on.
+#[cfg(any(target_os = "linux", test))]
+fn client_label(src: &[u8; 4], debug: u32) -> String {
+    if debug >= 2 {
+        ipv4_str(src)
+    } else {
+        format!("{}.{}.{}.0/24", src[0], src[1], src[2])
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -694,5 +707,17 @@ fn hex_dump(label: &str, data: &[u8]) {
     }
     if !line.is_empty() {
         println!("{label} ----  {line}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_level_one_masks_the_client_address() {
+        let src = [198, 51, 100, 77];
+        assert_eq!(client_label(&src, 1), "198.51.100.0/24");
+        assert_eq!(client_label(&src, 2), "198.51.100.77");
     }
 }
