@@ -84,10 +84,8 @@ See deploy/backend-dsr.sh (idempotent). Requirements:
     ip addr add <EIP>/32 dev pfe-dsr0          # per front-end EIP
     sysctl -w net.ipv4.conf.all.rp_filter=0
     sysctl -w net.ipv4.conf.<ingress-nic>.accept_local=1   # REQUIRED
-    nft add table inet pfe_dsr
-    nft add chain inet pfe_dsr input '{ type filter hook input priority -10; policy accept; }'
-    nft add rule inet pfe_dsr input iifname "pfe-gre*" ip daddr { <EIPs> } tcp dport 80 accept
-    nft add rule inet pfe_dsr input iifname "pfe-gre*" drop
+    nft -f <ruleset>      # table inet pfe_dsr in one transaction; the exact
+                          # text is in backend-dsr.sh
 
   - accept_local on the physical ingress NIC is a hard requirement: GRE
     packets arrive with source = the EIP, which is local; without it the
@@ -96,6 +94,9 @@ See deploy/backend-dsr.sh (idempotent). Requirements:
   - The nftables allowlist is mandatory: DSR exposes the host's entire port
     space through every EIP. Decapsulated packets enter from the pfe-greN
     device (the dummy never receives), hence iifname "pfe-gre*" + EIP set.
+    The script validates its inputs and loads the table as one `nft -f`
+    transaction, so a rejected ruleset leaves the previous table in place;
+    a forward chain drops anything routed through a tunnel device.
   - The host/DC egress must not BCP38-filter src=EIP; verify per site.
   - One GRE device per front-end EIP (remote = that EIP).
 
