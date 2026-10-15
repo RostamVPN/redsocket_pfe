@@ -199,11 +199,11 @@ mod tests {
 
     #[test]
     fn parses_basic_map() {
-        let text = "# comment\n1.2.3.4, 10.0.0.1, 10.0.0.1, 5.6.7.8, 5555\n\n1.2.3.5,10.0.0.2,10.0.0.2,8.9.10.11,4321\n";
+        let text = "# comment\n203.0.113.4, 10.0.0.1, 10.0.0.1, 198.51.100.8, 5555\n\n203.0.113.5,10.0.0.2,10.0.0.2,198.51.100.11,4321\n";
         let m = IpMap::parse(text).unwrap();
         assert_eq!(m.routes().len(), 2);
         let r = m.lookup_v4("10.0.0.2".parse().unwrap()).unwrap();
-        assert_eq!(r.eip, IpAddr::parse("1.2.3.5").unwrap());
+        assert_eq!(r.eip, IpAddr::parse("203.0.113.5").unwrap());
         assert_eq!(r.tunnel_port, 4321);
     }
 
@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn rejects_mixed_families() {
-        let text = "1.2.3.4,10.0.0.1,fd8f::1,5.6.7.8\n";
+        let text = "203.0.113.4,10.0.0.1,fd8f::1,198.51.100.8\n";
         assert!(IpMap::parse(text).is_err());
     }
 
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn rejects_short_lines() {
-        assert!(IpMap::parse("1.2.3.4,10.0.0.1\n").is_err());
+        assert!(IpMap::parse("203.0.113.4,10.0.0.1\n").is_err());
         assert!(IpMap::parse("").is_err());
     }
 }

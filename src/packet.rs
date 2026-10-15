@@ -345,10 +345,10 @@ mod tests {
         fix(&mut frame, [10, 0, 0, 1]);
         assert_eq!(checksum(&frame[ip_start..ip_start + 20]), 0);
 
-        rewrite_ipv4_dst(&mut frame[ip_start..], [1, 2, 3, 4]);
+        rewrite_ipv4_dst(&mut frame[ip_start..], [203, 0, 113, 4]);
 
         let ip = &frame[ip_start..];
-        assert_eq!(&ip[16..20], &[1, 2, 3, 4]);
+        assert_eq!(&ip[16..20], &[203, 0, 113, 4]);
         assert_eq!(
             checksum(&ip[..20]),
             0,
@@ -374,7 +374,7 @@ mod tests {
         ip[0] = 0x45;
         ip[2..4].copy_from_slice(&28u16.to_be_bytes());
         ip[9] = IPPROTO_UDP;
-        ip[12..16].copy_from_slice(&[1, 1, 1, 1]);
+        ip[12..16].copy_from_slice(&[198, 51, 100, 1]);
         ip[16..20].copy_from_slice(&[10, 0, 0, 1]);
         let hc = checksum(&ip[..20]);
         ip[10..12].copy_from_slice(&hc.to_be_bytes());
@@ -392,7 +392,7 @@ mod tests {
         ip[26..28].copy_from_slice(&c.to_be_bytes());
         assert_eq!(checksum(&pseudo(&ip)), 0);
 
-        rewrite_ipv4_dst(&mut ip, [9, 9, 9, 9]);
+        rewrite_ipv4_dst(&mut ip, [203, 0, 113, 9]);
 
         assert_eq!(&ip[20..26], &[0x0f, 0xa0, 0, 53, 0, 8], "ports and length untouched");
         assert_eq!(checksum(&ip[..20]), 0);
@@ -433,7 +433,7 @@ mod tests {
         ip[0] = 0x4f;
         ip[9] = IPPROTO_TCP;
         let before = ip.clone();
-        rewrite_ipv4_dst(&mut ip, [9, 9, 9, 9]);
+        rewrite_ipv4_dst(&mut ip, [203, 0, 113, 9]);
         assert_eq!(ip, before);
     }
 
@@ -443,13 +443,13 @@ mod tests {
         ip[0] = 0x45;
         ip[2..4].copy_from_slice(&28u16.to_be_bytes());
         ip[9] = IPPROTO_UDP;
-        ip[12..16].copy_from_slice(&[1, 1, 1, 1]);
+        ip[12..16].copy_from_slice(&[198, 51, 100, 1]);
         ip[16..20].copy_from_slice(&[10, 0, 0, 1]);
         let hc = checksum(&ip[..20]);
         ip[10..12].copy_from_slice(&hc.to_be_bytes());
         ip[26] = 0;
         ip[27] = 0;
-        rewrite_ipv4_dst(&mut ip, [9, 9, 9, 9]);
+        rewrite_ipv4_dst(&mut ip, [203, 0, 113, 9]);
         assert_eq!(&ip[26..28], &[0, 0], "UDP none-checksum must stay 0");
         assert_eq!(checksum(&ip[..20]), 0);
     }
@@ -464,7 +464,7 @@ mod tests {
             src_mac: [0x11; 6],
             dst_mac: [0x22; 6],
             src_ip: [10, 0, 0, 1],
-            dst_ip: [5, 6, 7, 8],
+            dst_ip: [198, 51, 100, 8],
             tos: 0x10,
             ip_id: 7,
         };
@@ -477,7 +477,7 @@ mod tests {
         assert_eq!(ip[0] >> 4, 4);
         assert_eq!(ip[9], IPPROTO_UDP);
         assert_eq!(&ip[12..16], &[10, 0, 0, 1]);
-        assert_eq!(&ip[16..20], &[5, 6, 7, 8]);
+        assert_eq!(&ip[16..20], &[198, 51, 100, 8]);
         let ihl = 20;
         assert_eq!(checksum(&ip[..ihl]), 0);
         let udp = &buf[ETH_HDR_LEN + ihl..];
@@ -500,7 +500,7 @@ mod tests {
             src_mac: [0x11; 6],
             dst_mac: [0x22; 6],
             src_ip: [10, 0, 0, 1],
-            dst_ip: [5, 6, 7, 8],
+            dst_ip: [198, 51, 100, 8],
             tos: 0x10,
             ip_id: 7,
         };
@@ -518,7 +518,7 @@ mod tests {
             (IPV4_HDR_LEN + GRE_HDR_LEN + inner_len) as u16
         );
         assert_eq!(&ip[12..16], &[10, 0, 0, 1]);
-        assert_eq!(&ip[16..20], &[5, 6, 7, 8]);
+        assert_eq!(&ip[16..20], &[198, 51, 100, 8]);
         assert_eq!(checksum(&ip[..IPV4_HDR_LEN]), 0);
         let gre = &buf[ETH_HDR_LEN + IPV4_HDR_LEN..GRE_HEADROOM];
         assert_eq!(gre, &[0, 0, 0x08, 0x00]);
