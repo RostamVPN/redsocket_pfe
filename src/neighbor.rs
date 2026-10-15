@@ -6,9 +6,9 @@
 
 use std::fs;
 use std::net::{Ipv4Addr, UdpSocket};
-use std::str::FromStr;
 
 use crate::packet::MacBytes;
+use crate::parse_mac;
 
 pub fn ifindex_of(iface: &str) -> Option<u32> {
     fs::read_to_string(format!("/sys/class/net/{iface}/ifindex"))
@@ -21,18 +21,6 @@ pub fn ifindex_of(iface: &str) -> Option<u32> {
 pub fn mac_of(iface: &str) -> Option<MacBytes> {
     let s = fs::read_to_string(format!("/sys/class/net/{iface}/address")).ok()?;
     parse_mac(s.trim())
-}
-
-pub fn parse_mac(s: &str) -> Option<MacBytes> {
-    let parts: Vec<&str> = s.split(':').collect();
-    if parts.len() != 6 {
-        return None;
-    }
-    let mut mac = [0u8; 6];
-    for (i, p) in parts.iter().enumerate() {
-        mac[i] = u8::from_str_radix(p, 16).ok()?;
-    }
-    Some(mac)
 }
 
 /// Default gateway for `iface` from /proc/net/route (lowest metric wins).
@@ -104,10 +92,6 @@ fn arp_table_mac(table: &str, ip: Ipv4Addr, iface: &str) -> Option<MacBytes> {
         }
         parse_mac(cols[3]).filter(|m| m[0] & 1 == 0 && m.iter().any(|&b| b != 0))
     })
-}
-
-pub fn ipv4_parse(s: &str) -> Option<Ipv4Addr> {
-    Ipv4Addr::from_str(s).ok()
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ mod neighbor;
 #[cfg(target_os = "linux")]
 mod xsk;
 
+use std::net::Ipv4Addr;
 use std::process::exit;
 #[cfg(target_os = "linux")]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -57,26 +58,37 @@ struct Args {
     mapfile: String,
     queue: u32,
     mode: String,
-    tunnel: String,
-    gateway_mac: Option<String>,
-    gateway4: Option<String>,
+    use_gre: bool,
+    gateway_mac: Option<[u8; 6]>,
+    gateway4: Option<Ipv4Addr>,
     configtest: bool,
     debug: u32,
 }
 
-fn parse_args() -> Result<Args, String> {
+fn parse_mac(s: &str) -> Option<[u8; 6]> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 6 {
+        return None;
+    }
+    let mut mac = [0u8; 6];
+    for (i, p) in parts.iter().enumerate() {
+        mac[i] = u8::from_str_radix(p, 16).ok()?;
+    }
+    Some(mac)
+}
+
+fn parse_args(argv: &[String]) -> Result<Args, String> {
     let mut a = Args {
         iface: String::new(),
         mapfile: String::new(),
         queue: 0,
         mode: "skb".to_string(),
-        tunnel: "fou".to_string(),
+        use_gre: false,
         gateway_mac: None,
         gateway4: None,
         configtest: false,
         debug: 0,
     };
-    let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < argv.len() {
         let arg = &argv[i];
@@ -105,15 +117,22 @@ fn parse_args() -> Result<Args, String> {
                 i += 1;
             }
             "--tunnel" => {
-                a.tunnel = val!("--tunnel");
+                a.use_gre = match val!("--tunnel").as_str() {
+                    "fou" => false,
+                    "gre" => true,
+                    other => return Err(format!("invalid --tunnel '{other}' (fou | gre)")),
+                };
                 i += 1;
             }
             "--gateway-mac" => {
-                a.gateway_mac = Some(val!("--gateway-mac"));
+                let s = val!("--gateway-mac");
+                a.gateway_mac =
+                    Some(parse_mac(&s).ok_or_else(|| format!("invalid --gateway-mac '{s}'"))?);
                 i += 1;
             }
             "--gateway4" => {
-                a.gateway4 = Some(val!("--gateway4"));
+                let s = val!("--gateway4");
+                a.gateway4 = Some(s.parse().map_err(|_| format!("invalid --gateway4 '{s}'"))?);
                 i += 1;
             }
             "-n" | "--configtest" => a.configtest = true,
@@ -134,6 +153,9 @@ fn parse_args() -> Result<Args, String> {
     if a.mapfile.is_empty() {
         return Err("no map file given (--mapfile)".to_string());
     }
+    if !matches!(a.mode.as_str(), "skb" | "driver" | "hw") {
+        return Err(format!("invalid --mode '{}' (skb | driver | hw)", a.mode));
+    }
     Ok(a)
 }
 
@@ -143,7 +165,8 @@ fn load_map(path: &str) -> Result<IpMap, String> {
 }
 
 fn main() {
-    let args = match parse_args() {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let args = match parse_args(&argv) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("error: {e}\n\n{USAGE}");
@@ -254,11 +277,7 @@ const CHUNK_MASK: u64 = (CHUNK_SIZE as u64) - 1;
 fn run_linux(args: &Args, map: IpMap) -> Result<(), String> {
     let mode =
         XdpMode::parse(&args.mode).ok_or_else(|| format!("invalid XDP mode '{}'", args.mode))?;
-    let use_gre = match args.tunnel.as_str() {
-        "fou" => false,
-        "gre" => true,
-        other => return Err(format!("invalid tunnel type '{other}' (fou | gre)")),
-    };
+    let use_gre = args.use_gre;
     let encap_len = if use_gre { GRE_HEADROOM } else { FOU_HEADROOM };
     let ifindex =
         nb::ifindex_of(&args.iface).ok_or_else(|| format!("interface {} not found", args.iface))?;
@@ -295,11 +314,11 @@ fn run_linux(args: &Args, map: IpMap) -> Result<(), String> {
         xsk.fd, args.queue, args.iface
     );
 
-    let gw_mac: MacBytes = match &args.gateway_mac {
-        Some(s) => nb::parse_mac(s).ok_or_else(|| format!("invalid --gateway-mac '{s}'"))?,
+    let gw_mac: MacBytes = match args.gateway_mac {
+        Some(m) => m,
         None => {
-            let gw_ip = match &args.gateway4 {
-                Some(s) => nb::ipv4_parse(s).ok_or_else(|| format!("invalid --gateway4 '{s}'"))?,
+            let gw_ip = match args.gateway4 {
+                Some(ip) => ip,
                 None => nb::default_gateway(&args.iface).ok_or_else(|| {
                     format!(
                         "no default route found for {}; use --gateway-mac",
@@ -713,6 +732,42 @@ fn hex_dump(label: &str, data: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse(argv: &[&str]) -> Result<Args, String> {
+        parse_args(&argv.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn parse_args_rejects_bogus_mode_tunnel_and_gateway_values() {
+        let base = ["-i", "eth1", "-m", "map.csv"];
+        assert!(parse(&base).is_ok());
+        for bad in [
+            ["--mode", "bogus"],
+            ["--tunnel", "bogus"],
+            ["--gateway-mac", "zz:zz"],
+            ["--gateway4", "999.1.1.1"],
+        ] {
+            let argv: Vec<&str> = base.iter().chain(bad.iter()).copied().collect();
+            let err = parse(&argv).err().expect("rejected");
+            assert!(err.contains(bad[0]), "{err}");
+        }
+        let ok = parse(&[
+            "-i",
+            "eth1",
+            "-m",
+            "map.csv",
+            "--tunnel",
+            "gre",
+            "--gateway-mac",
+            "00:00:5e:00:53:01",
+            "--gateway4",
+            "192.0.2.1",
+        ])
+        .unwrap();
+        assert!(ok.use_gre);
+        assert_eq!(ok.gateway_mac, Some([0, 0, 0x5e, 0, 0x53, 1]));
+        assert_eq!(ok.gateway4, Some(Ipv4Addr::new(192, 0, 2, 1)));
+    }
 
     #[test]
     fn debug_level_one_masks_the_client_address() {
