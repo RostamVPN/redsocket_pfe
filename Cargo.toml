@@ -1,0 +1,17 @@
+[package]
+name = "pfe-rs"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Triangle-routing (DSR) packet forwarder: AF_XDP front-end that rewrites EIP->private and FoU-encapsulates toward a back-end"
+
+[[bin]]
+name = "pfe"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true

@@ -1,0 +1,7 @@
+/target
+
+!**/vendor/**
+!**/vendor/**/target/
+!**/vendor/**/.cargo/
+!**/.cargo/
+!**/local-maven/**

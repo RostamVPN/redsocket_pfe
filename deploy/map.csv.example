@@ -1,0 +1,12 @@
+# pfe-rs mapfile: EIP, Private IP, Tunnel Src, Tunnel Dst, Port
+#
+# --tunnel gre (recommended): Port is unused. Tunnel src = the ENI's private
+#   IP (the cloud NATs it back to the EIP on egress, so the back-end GRE
+#   tunnel's remote = the EIP). Tunnel dst = back-end host IP. Back-end:
+#   one "ip link add pfe-greN type gre local <tunnel dst> remote <EIP>" per
+#   frontend; see backend-dsr.sh.
+# --tunnel fou (compat only): Port = FoU decap port. Kernel fou ipproto-4
+#   will NOT deliver a bare client packet (it expects an IPIP payload and
+#   needs a registered tunnel handler) -- only use fou against a back-end
+#   with its own userspace decap.
+203.0.113.10,10.0.0.10,10.0.0.10,198.51.100.20,5555

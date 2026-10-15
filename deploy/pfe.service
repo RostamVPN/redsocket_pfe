@@ -1,0 +1,21 @@
+[Unit]
+Description=pfe XDP triangle-routing front-end
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pfe --iface ${PFE_IFACE} --mapfile /etc/pfe/map.csv --mode ${PFE_MODE} --queue ${PFE_QUEUE}
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=2
+# SIGHUP reloads routes atomically; SIGUSR1 dumps stats
+KillSignal=SIGTERM
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+# AF_XDP + umem needs a chunk of locked memory
+LimitMEMLOCK=infinity
+Nice=-10
+
+[Install]
+WantedBy=multi-user.target
