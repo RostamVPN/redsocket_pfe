@@ -221,11 +221,16 @@ impl Ring {
     }
 }
 
+/// Kernel `struct xdp_desc`; `options` must be zero on submission.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct XdpDesc {
     pub addr: u64,
     pub len: u32,
+    pub options: u32,
 }
+
+const _: () = assert!(std::mem::size_of::<XdpDesc>() == 16);
 
 /// RX ring (kernel produces, we consume).
 pub struct RxRing {
@@ -346,13 +351,19 @@ impl CompRing {
 
 pub struct Umem {
     pub base: *mut u8,
+    len: usize,
 }
 
 unsafe impl Send for Umem {}
 
 impl Umem {
+    /// Frame bytes at `pkt_addr`; the range must lie inside the umem.
     #[inline]
     pub unsafe fn pkt_slice(&mut self, pkt_addr: u64, len: u32) -> &mut [u8] {
+        let inside = (pkt_addr as usize)
+            .checked_add(len as usize)
+            .is_some_and(|end| end <= self.len);
+        assert!(inside, "umem range {pkt_addr}+{len} is outside {} bytes", self.len);
         let p = self.base.add(pkt_addr as usize);
         std::slice::from_raw_parts_mut(p, len as usize)
     }
@@ -464,6 +475,7 @@ impl Xsk {
             }
             let umem = Umem {
                 base: base as *mut u8,
+                len,
             };
 
             let fd = libc::socket(AF_XDP, libc::SOCK_RAW | libc::SOCK_CLOEXEC, 0);
@@ -836,7 +848,7 @@ fn send_nl(msg: &[u8]) -> io::Result<()> {
             if t == libc::NLMSG_ERROR as u16 {
                 let err = i32::from_ne_bytes([buf[16], buf[17], buf[18], buf[19]]);
                 if err != 0 {
-                    return Err(io::Error::from_raw_os_error(err));
+                    return Err(io::Error::from_raw_os_error(-err));
                 }
             }
         }

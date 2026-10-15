@@ -495,18 +495,18 @@ unsafe fn handle_frame(
                 }
                 let tpa = std::net::Ipv4Addr::from(arp.tpa);
                 if arp.op == ARP_OP_REQUEST && map.lookup_v4(tpa).is_some() {
-                    let tx_addr = pkt_addr - FOU_HEADROOM as u64;
                     {
-                        let buf = umem.pkt_slice(tx_addr, (ETH_HDR_LEN + 28 + FOU_HEADROOM) as u32);
-                        let n = build_arp_reply(&mut buf[..ETH_HDR_LEN + 28], &arp, our_mac);
+                        let buf = umem.pkt_slice(pkt_addr, (ETH_HDR_LEN + 28) as u32);
+                        let n = build_arp_reply(buf, &arp, our_mac);
                         if debug >= 1 {
                             println!("arp: replying for {tpa} ({} bytes)", n);
                         }
                     }
                     if tx.free() > 0 {
                         tx.submit(XdpDesc {
-                            addr: tx_addr,
+                            addr: pkt_addr,
                             len: (ETH_HDR_LEN + 28) as u32,
+                            options: 0,
                         });
                         stats.tx_packets += 1;
                         stats.tx_bytes += (ETH_HDR_LEN + 28) as u64;
@@ -594,6 +594,7 @@ unsafe fn handle_frame(
                     tx.submit(XdpDesc {
                         addr: tx_addr,
                         len: frame_len as u32,
+                        options: 0,
                     });
                     stats.tx_packets += 1;
                     stats.tx_bytes += frame_len as u64;
@@ -629,6 +630,7 @@ unsafe fn resolve_gateway_mac(
         xsk.tx.submit(XdpDesc {
             addr: chunk,
             len: n as u32,
+            options: 0,
         });
     }
     xsk.tx.flush();
