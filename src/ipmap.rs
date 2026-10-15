@@ -84,7 +84,11 @@ pub struct IpMap {
 
 impl IpMap {
     pub fn parse(text: &str) -> Result<Self, String> {
-        let mut routes = Vec::new();
+        let mut m = IpMap {
+            routes: Vec::new(),
+            by_dst_v4: HashMap::new(),
+            by_dst_v6: HashMap::new(),
+        };
         for (lineno, raw) in text.lines().enumerate() {
             let line = raw.trim();
             if line.is_empty() || line.starts_with('#') {
@@ -129,15 +133,13 @@ impl IpMap {
             route
                 .validate()
                 .map_err(|e| format!("line {}: {e}", lineno + 1))?;
-            routes.push(route);
-        }
-        let mut m = IpMap {
-            routes: Vec::new(),
-            by_dst_v4: HashMap::new(),
-            by_dst_v6: HashMap::new(),
-        };
-        for r in routes {
-            m.insert(r);
+            if !m.insert(route) {
+                return Err(format!(
+                    "line {}: duplicate private address {}",
+                    lineno + 1,
+                    route.private
+                ));
+            }
         }
         if m.routes.is_empty() {
             return Err("no routes found in map file".to_string());
@@ -145,21 +147,16 @@ impl IpMap {
         Ok(m)
     }
 
-    fn insert(&mut self, r: Route) {
+    /// Index the route by its private address; false if that address is taken.
+    fn insert(&mut self, r: Route) -> bool {
+        let idx = self.routes.len();
         match r.private {
-            IpAddr::V4(a) => {
-                if !self.by_dst_v4.contains_key(&a) {
-                    self.by_dst_v4.insert(a, self.routes.len());
-                    self.routes.push(r);
-                }
-            }
-            IpAddr::V6(a) => {
-                if !self.by_dst_v6.contains_key(&a) {
-                    self.by_dst_v6.insert(a, self.routes.len());
-                    self.routes.push(r);
-                }
-            }
-        }
+            IpAddr::V4(a) if !self.by_dst_v4.contains_key(&a) => self.by_dst_v4.insert(a, idx),
+            IpAddr::V6(a) if !self.by_dst_v6.contains_key(&a) => self.by_dst_v6.insert(a, idx),
+            _ => return false,
+        };
+        self.routes.push(r);
+        true
     }
 
     #[cfg(any(target_os = "linux", test))]
@@ -223,6 +220,13 @@ mod tests {
     fn rejects_mixed_families() {
         let text = "1.2.3.4,10.0.0.1,fd8f::1,5.6.7.8\n";
         assert!(IpMap::parse(text).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_private_address() {
+        let text = "203.0.113.4,10.0.0.1,10.0.0.1,198.51.100.8\n203.0.113.5,10.0.0.1,10.0.0.1,198.51.100.8\n";
+        let err = IpMap::parse(text).unwrap_err();
+        assert!(err.starts_with("line 2: duplicate private address 10.0.0.1"), "{err}");
     }
 
     #[test]
