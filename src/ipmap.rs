@@ -226,7 +226,10 @@ mod tests {
     fn rejects_duplicate_private_address() {
         let text = "203.0.113.4,10.0.0.1,10.0.0.1,198.51.100.8\n203.0.113.5,10.0.0.1,10.0.0.1,198.51.100.8\n";
         let err = IpMap::parse(text).unwrap_err();
-        assert!(err.starts_with("line 2: duplicate private address 10.0.0.1"), "{err}");
+        assert!(
+            err.starts_with("line 2: duplicate private address 10.0.0.1"),
+            "{err}"
+        );
     }
 
     #[test]
