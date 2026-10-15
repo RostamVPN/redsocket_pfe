@@ -43,7 +43,7 @@ Headline recommendation: make the exit-host controls durable and explicit (a fir
 ## 2. Scope, Methodology, and Limitations
 
 ### 2.1 Material reviewed
-Repository: `/Users/architect/silo/redsocket_http_github.com/redsocket_pfe`. The tree is an untracked working copy with no git history, so no commit hash exists. Identification is by content hash (SHA-256 of the sorted per-file SHA-256 list): `6eea68b650fdd9862c1f33b37f6d64ad41b14076d85f14513b974c1e1ef1af2d`.
+Repository: https://github.com/RostamVPN/redsocket_pfe, branch `main`, initial public commit `711ce44`; this report is added in a follow-up commit. Identification is additionally by content hash (SHA-256 of the sorted per-file SHA-256 list): `6eea68b650fdd9862c1f33b37f6d64ad41b14076d85f14513b974c1e1ef1af2d`.
 
 | File | Lines | SHA-256 (first 16) | Role |
 |---|---|---|---|
@@ -68,7 +68,7 @@ Status convention: CONFIRMED means the defect is traced to file:line in this tre
 Standards: the template's OWASP MASVS v2 / MASTG references do not apply to a network component; each finding is mapped instead to OWASP ASVS 4.0.3 controls and CWE identifiers, with a CVSS 3.1 vector for reference. Assessed severity follows the matrix in Section 3, which outranks the CVSS score where the two disagree (noted inline).
 
 ### 2.3 Not assessed
-Runtime behaviour of the binary and of the eBPF program on real NICs (`skb`, `driver`, `hw` modes); the cloud side (1:1 NAT, ENI anti-spoofing, security groups, flow logs); the exit service itself (`redsocket_http`, separately assessed); the earlier private-tree deploy scripts referenced by the leads (not re-read; only the two lead items were used) [REDACT-FOR-PUBLIC]; line review of the vendored `libc` crate; IPv6 forwarding (documented as not implemented, README:105); build reproducibility beyond the configuration in the tree (no CI definition present); traffic fingerprint of the tunnel leg on the wire.
+Runtime behaviour of the binary and of the eBPF program on real NICs (`skb`, `driver`, `hw` modes); the cloud side (1:1 NAT, ENI anti-spoofing, security groups, flow logs); the exit service itself (`redsocket_http`, separately assessed); the earlier private-tree deploy scripts referenced by the leads (not re-read; only the two lead items were used); line review of the vendored `libc` crate; IPv6 forwarding (documented as not implemented, README:105); build reproducibility beyond the configuration in the tree (no CI definition present); traffic fingerprint of the tunnel leg on the wire.
 
 ### 2.4 Attack surface from manifests and build configuration
 Inputs: (1) raw Ethernet frames on the bound queue — untrusted, from the whole Internet via the cloud NAT, plus the local L2 segment (ARP); (2) the map CSV at `--mapfile` — trusted, root-owned, re-read on SIGHUP; (3) argv and environment via the unit — trusted; (4) `/proc/net/route`, `/proc/net/arp`, `/sys/class/net/*` — trusted. Outputs: encapsulated frames to one gateway MAC, ARP replies for mapped private IPs, stdout (journal). Privileges: root with bounding set `CAP_NET_RAW CAP_NET_ADMIN`, unlimited locked memory; raw `bpf(2)`, `AF_XDP`, `AF_NETLINK` (RTM_SETLINK), one `AF_INET` UDP socket (neighbor.rs:73, route selection only). Exit host: GRE devices with no key, EIPs as local /32s, `rp_filter` off globally, `accept_local` on the ingress NIC, forwarding off per tunnel, an `inet` input-hook allowlist. The map file is the only policy object; there is no control plane, no network listener and no management API.
