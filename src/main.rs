@@ -306,7 +306,7 @@ fn run_linux(args: &Args, map: IpMap) -> Result<(), String> {
                 })?,
             };
             println!("gateway ip: {gw_ip}");
-            match nb::arp_cache_lookup(gw_ip) {
+            match nb::arp_cache_lookup(gw_ip, &args.iface) {
                 Some(m) => {
                     println!("gateway mac (arp cache): {}", mac_str(&m));
                     m

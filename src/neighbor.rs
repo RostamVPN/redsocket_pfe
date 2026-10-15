@@ -81,19 +81,56 @@ pub fn our_ipv4_toward(gw: Ipv4Addr) -> Option<Ipv4Addr> {
     }
 }
 
-/// MAC for `ip` from the system ARP cache.
-pub fn arp_cache_lookup(ip: Ipv4Addr) -> Option<MacBytes> {
-    let text = fs::read_to_string("/proc/net/arp").ok()?;
+/// Complete-entry bit (ATF_COM) of the Flags column in /proc/net/arp.
+const ATF_COM: u32 = 0x02;
+
+/// MAC for `ip` on `iface` from the system ARP cache: only a complete entry
+/// with a unicast, non-zero address counts.
+pub fn arp_cache_lookup(ip: Ipv4Addr, iface: &str) -> Option<MacBytes> {
+    arp_table_mac(&fs::read_to_string("/proc/net/arp").ok()?, ip, iface)
+}
+
+/// Columns of /proc/net/arp: IP address, HW type, Flags, HW address, Mask, Device.
+fn arp_table_mac(table: &str, ip: Ipv4Addr, iface: &str) -> Option<MacBytes> {
     let wanted = ip.to_string();
-    for line in text.lines().skip(1) {
+    table.lines().skip(1).find_map(|line| {
         let cols: Vec<&str> = line.split_whitespace().collect();
-        if cols.len() >= 4 && cols[0] == wanted {
-            return parse_mac(cols[3]);
+        if cols.len() < 6 || cols[0] != wanted || cols[5] != iface {
+            return None;
         }
-    }
-    None
+        let flags = u32::from_str_radix(cols[2].trim_start_matches("0x"), 16).ok()?;
+        if flags & ATF_COM == 0 {
+            return None;
+        }
+        parse_mac(cols[3]).filter(|m| m[0] & 1 == 0 && m.iter().any(|&b| b != 0))
+    })
 }
 
 pub fn ipv4_parse(s: &str) -> Option<Ipv4Addr> {
     Ipv4Addr::from_str(s).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arp_table_lookup_wants_a_complete_unicast_entry_on_the_interface() {
+        let table = "IP address       HW type     Flags       HW address            Mask     Device\n\
+                     192.0.2.1        0x1         0x0         00:00:00:00:00:00     *        eth1\n\
+                     192.0.2.1        0x1         0x2         00:00:5e:00:53:01     *        eth0\n\
+                     192.0.2.2        0x1         0x2         01:00:5e:00:53:02     *        eth1\n\
+                     192.0.2.3        0x1         0x2         00:00:5e:00:53:03     *        eth1\n";
+        let ip = |s: &str| s.parse::<Ipv4Addr>().unwrap();
+        assert_eq!(arp_table_mac(table, ip("192.0.2.1"), "eth1"), None);
+        assert_eq!(
+            arp_table_mac(table, ip("192.0.2.1"), "eth0"),
+            Some([0, 0, 0x5e, 0, 0x53, 1])
+        );
+        assert_eq!(arp_table_mac(table, ip("192.0.2.2"), "eth1"), None);
+        assert_eq!(
+            arp_table_mac(table, ip("192.0.2.3"), "eth1"),
+            Some([0, 0, 0x5e, 0, 0x53, 3])
+        );
+    }
 }
