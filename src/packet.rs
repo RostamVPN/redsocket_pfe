@@ -177,23 +177,29 @@ fn l4_offset(ip: &[u8]) -> Option<usize> {
         return None;
     }
     let ihl = (ip[0] & 0x0f) as usize * 4;
-    if ip.len() < ihl + 2 {
+    if ihl < IPV4_HDR_LEN || ip.len() < ihl + 2 {
         return None;
     }
     Some(match ip[9] {
-        IPPROTO_TCP | IPPROTO_UDP => ihl + 16,
+        IPPROTO_TCP => ihl + 16,
+        IPPROTO_UDP => ihl + 6,
         _ => return None,
     })
 }
 
 /// Rewrite the destination address of an IPv4 packet from `old` to `new`,
 /// updating the IP header checksum (full recompute) and the L4 checksum
-/// (incremental). UDP checksum 0 (none) is left alone.
+/// (incremental). UDP checksum 0 (none) is left alone. A header length
+/// field that is below 20 or beyond the bytes present leaves the packet
+/// untouched; the caller drops such frames before calling.
 pub fn rewrite_ipv4_dst(ip: &mut [u8], new: Ipv4Bytes) {
+    let ihl = (ip[0] & 0x0f) as usize * 4;
+    if ihl < IPV4_HDR_LEN || ip.len() < ihl {
+        return;
+    }
     let old: Ipv4Bytes = [ip[16], ip[17], ip[18], ip[19]];
     ip[16..20].copy_from_slice(&new);
 
-    let ihl = (ip[0] & 0x0f) as usize * 4;
     ip[10] = 0;
     ip[11] = 0;
     let hc = checksum(&ip[..ihl]);
@@ -356,6 +362,47 @@ mod tests {
             0,
             "TCP checksum must validate after rewrite"
         );
+    }
+
+    #[test]
+    fn rewrite_updates_udp_checksum_at_its_offset() {
+        let mut ip = vec![0u8; 20 + 8];
+        ip[0] = 0x45;
+        ip[2..4].copy_from_slice(&28u16.to_be_bytes());
+        ip[9] = IPPROTO_UDP;
+        ip[12..16].copy_from_slice(&[1, 1, 1, 1]);
+        ip[16..20].copy_from_slice(&[10, 0, 0, 1]);
+        let hc = checksum(&ip[..20]);
+        ip[10..12].copy_from_slice(&hc.to_be_bytes());
+        ip[20..22].copy_from_slice(&4000u16.to_be_bytes());
+        ip[22..24].copy_from_slice(&53u16.to_be_bytes());
+        ip[24..26].copy_from_slice(&8u16.to_be_bytes());
+        let pseudo = |ip: &[u8]| {
+            let mut v = Vec::new();
+            v.extend_from_slice(&ip[12..20]);
+            v.extend_from_slice(&[0, IPPROTO_UDP, 0, 8]);
+            v.extend_from_slice(&ip[20..28]);
+            v
+        };
+        let c = checksum(&pseudo(&ip));
+        ip[26..28].copy_from_slice(&c.to_be_bytes());
+        assert_eq!(checksum(&pseudo(&ip)), 0);
+
+        rewrite_ipv4_dst(&mut ip, [9, 9, 9, 9]);
+
+        assert_eq!(&ip[20..26], &[0x0f, 0xa0, 0, 53, 0, 8], "ports and length untouched");
+        assert_eq!(checksum(&ip[..20]), 0);
+        assert_eq!(checksum(&pseudo(&ip)), 0, "UDP checksum must validate after rewrite");
+    }
+
+    #[test]
+    fn rewrite_ignores_a_header_length_beyond_the_packet() {
+        let mut ip = vec![0u8; 20];
+        ip[0] = 0x4f;
+        ip[9] = IPPROTO_TCP;
+        let before = ip.clone();
+        rewrite_ipv4_dst(&mut ip, [9, 9, 9, 9]);
+        assert_eq!(ip, before);
     }
 
     #[test]

@@ -499,7 +499,8 @@ unsafe fn handle_frame(
             }
             ETHERTYPE_IPV4 => {
                 let ip = &pkt[ETH_HDR_LEN..];
-                if ip.len() < IPV4_HDR_LEN {
+                let ihl = (ip.first().copied().unwrap_or(0) & 0x0f) as usize * 4;
+                if ip.len() < IPV4_HDR_LEN || ihl < IPV4_HDR_LEN || ip.len() < ihl {
                     stats.dropped += 1;
                     recycle_now(pool);
                     return 0;

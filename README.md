@@ -34,7 +34,7 @@ black hole: everything arriving there is forwarded to the back-end. Bind
 ONLY a secondary/data NIC, never the management interface.
 
     ethtool -L <iface> combined 1          # pin all RX to one queue
-    pfe -i <iface> -m /etc/pfe/map.csv --tunnel gre -d   # or deploy/pfe.service
+    pfe -i <iface> -m /etc/pfe/map.csv --tunnel gre   # or deploy/pfe.service
 
   -i, --iface <name>       interface to take over (required)
   -m, --mapfile <path>     route map CSV (required)

@@ -68,7 +68,7 @@ NOTE: make the above persistent (netplan/ifupdown dummy + systemd gre units +
   sysctl net.ipv4.conf.all.rp_filter=0
   sysctl net.ipv4.conf.pfe-greN.forwarding=0        (per tunnel)
   sysctl net.ipv4.conf.<ingress-nic>.accept_local=1
-  the nftables table inet pfe_dsr (save via `nft list ruleset > /etc/pfe-dsr.nft`
+  the nftables table inet pfe_dsr (save via \`nft list ruleset > /etc/pfe-dsr.nft\`
   and an include, or a systemd unit running this script at boot)
 EOF
 
