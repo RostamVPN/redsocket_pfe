@@ -356,6 +356,8 @@ fn run_linux(args: &Args, map: IpMap) -> Result<(), String> {
             }
             if avail > 0 {
                 xsk.comp.release(avail);
+            }
+            if !pool.is_empty() {
                 xsk.refill(&mut pool);
             }
 
