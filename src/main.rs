@@ -619,31 +619,28 @@ unsafe fn resolve_gateway_mac(
             continue;
         }
         let n = xsk.rx.available();
+        let mut found: Option<MacBytes> = None;
+        let mut junk: Vec<u64> = Vec::with_capacity(n as usize);
         for i in 0..n {
             let d = xsk.rx.desc(i);
+            junk.push(d.addr & !CHUNK_MASK);
             let pkt = xsk.umem.pkt_slice(d.addr, d.len);
-            if let Some(eth) = parse_eth(pkt) {
-                if eth.ethertype == ETHERTYPE_ARP {
-                    if let Some(arp) = parse_arp(&pkt[ETH_HDR_LEN..]) {
-                        if arp.op == ARP_OP_REPLY && arp.spa == gw_ip.octets() {
-                            let mac: MacBytes = arp.sha;
-                            xsk.rx.release(n);
-
-                            let mut junk: Vec<u64> =
-                                (0..n).map(|j| xsk.rx.desc(j).addr & !CHUNK_MASK).collect();
-
-                            xsk.refill(&mut junk);
-                            println!("gateway mac (probe): {}", mac_str(&mac));
-                            return Ok(mac);
-                        }
-                    }
+            let arp = match parse_eth(pkt) {
+                Some(eth) if eth.ethertype == ETHERTYPE_ARP => parse_arp(&pkt[ETH_HDR_LEN..]),
+                _ => None,
+            };
+            if let Some(arp) = arp {
+                if found.is_none() && arp.op == ARP_OP_REPLY && arp.spa == gw_ip.octets() {
+                    found = Some(arp.sha);
                 }
             }
         }
-
-        let mut junk: Vec<u64> = (0..n).map(|j| xsk.rx.desc(j).addr & !CHUNK_MASK).collect();
         xsk.rx.release(n);
         xsk.refill(&mut junk);
+        if let Some(mac) = found {
+            println!("gateway mac (probe): {}", mac_str(&mac));
+            return Ok(mac);
+        }
     }
     Err(format!(
         "gateway {gw_ip} did not answer ARP within 3s; set --gateway-mac explicitly"
